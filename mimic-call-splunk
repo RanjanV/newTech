@@ -1,0 +1,54 @@
+import requests
+import time
+
+# Example session info — replace with values from browser's request
+splunk_url = "https://yoursplunkurl.com"
+cookies = {
+    "splunkweb_uid": "admin",  # from browser
+    "session_id": "YOUR_SESSION_ID"  # from browser
+}
+headers = {
+    "X-Splunk-Form-Key": "YOUR_FORM_KEY",  # usually needed
+    "Referer": splunk_url + "/en-US/app/search/search",
+    "User-Agent": "Mozilla/5.0"
+}
+
+search_query = "search index=_internal | stats count by sourcetype"
+
+# Step 1: Submit the search
+submit_resp = requests.post(
+    f"{splunk_url}/services/search/jobs",
+    headers=headers,
+    cookies=cookies,
+    data={"search": search_query, "output_mode": "json"},
+    verify=False
+)
+sid = submit_resp.json()["sid"]
+print(f"Search job started: {sid}")
+
+# Step 2: Poll for job completion
+while True:
+    poll_resp = requests.get(
+        f"{splunk_url}/services/search/jobs/{sid}",
+        headers=headers,
+        cookies=cookies,
+        params={"output_mode": "json"},
+        verify=False
+    )
+    if poll_resp.json()["entry"][0]["content"]["isDone"]:
+        break
+    time.sleep(2)
+
+# Step 3: Get results
+results_resp = requests.get(
+    f"{splunk_url}/services/search/jobs/{sid}/results",
+    headers=headers,
+    cookies=cookies,
+    params={"output_mode": "json"},
+    verify=False
+)
+results = results_resp.json()["results"]
+
+# Print the results
+for row in results:
+    print(row)
