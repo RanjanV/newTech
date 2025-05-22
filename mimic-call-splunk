@@ -1,54 +1,63 @@
 import requests
 import time
 
-# Example session info — replace with values from browser's request
-splunk_url = "https://yoursplunkurl.com"
+# ----------------------------------
+# ✅ SETUP: Replace these values
+# ----------------------------------
+splunk_url = "https://your-splunk-host/en-US/splunkd/__raw/servicesNS/your_user_id/search/search/v2/jobs"
+
 cookies = {
-    "splunkweb_uid": "admin",  # from browser
-    "session_id": "YOUR_SESSION_ID"  # from browser
+    "session_id": "your_session_id_here"  # From browser cookies
 }
+
 headers = {
-    "X-Splunk-Form-Key": "YOUR_FORM_KEY",  # usually needed
-    "Referer": splunk_url + "/en-US/app/search/search",
-    "User-Agent": "Mozilla/5.0"
+    "User-Agent": "Mozilla/5.0",  # Pretend it's a browser
+    "X-Splunk-Form-Key": "your_token_key_here",  # Often same as token_key in cookies
+    "Content-Type": "application/x-www-form-urlencoded"
 }
 
-search_query = "search index=_internal | stats count by sourcetype"
+payload = {
+    "search": "search index=_internal | stats count by sourcetype",
+    "output_mode": "json",
+    "earliest_time": "-1h",
+    "latest_time": "now"
+}
 
-# Step 1: Submit the search
-submit_resp = requests.post(
-    f"{splunk_url}/services/search/jobs",
-    headers=headers,
-    cookies=cookies,
-    data={"search": search_query, "output_mode": "json"},
-    verify=False
-)
-sid = submit_resp.json()["sid"]
-print(f"Search job started: {sid}")
+# ----------------------------------
+# ✅ Step 1: Submit Search Job
+# ----------------------------------
+print("🔁 Submitting search job...")
+submit_resp = requests.post(splunk_url, headers=headers, cookies=cookies, data=payload, verify=False)
+submit_resp.raise_for_status()
+sid = submit_resp.json().get("sid")
+print(f"✅ Search Job Created with SID: {sid}")
 
-# Step 2: Poll for job completion
+# ----------------------------------
+# ✅ Step 2: Poll Job Status
+# ----------------------------------
+status_url = f"{splunk_url}/{sid}"
 while True:
-    poll_resp = requests.get(
-        f"{splunk_url}/services/search/jobs/{sid}",
-        headers=headers,
-        cookies=cookies,
-        params={"output_mode": "json"},
-        verify=False
-    )
-    if poll_resp.json()["entry"][0]["content"]["isDone"]:
+    status_resp = requests.get(status_url, headers=headers, cookies=cookies, params={"output_mode": "json"}, verify=False)
+    status_resp.raise_for_status()
+    job_status = status_resp.json()["entry"][0]["content"]
+    print(f"⏳ Search status: {job_status.get('dispatchState')}, Done: {job_status.get('isDone')}")
+
+    if job_status.get("isDone"):
         break
     time.sleep(2)
 
-# Step 3: Get results
-results_resp = requests.get(
-    f"{splunk_url}/services/search/jobs/{sid}/results",
-    headers=headers,
-    cookies=cookies,
-    params={"output_mode": "json"},
-    verify=False
-)
-results = results_resp.json()["results"]
+# ----------------------------------
+# ✅ Step 3: Get Final Results
+# ----------------------------------
+results_url = f"{splunk_url}/{sid}/results"
+params = {
+    "output_mode": "json",
+    "count": 1000  # number of rows to fetch
+}
+results_resp = requests.get(results_url, headers=headers, cookies=cookies, params=params, verify=False)
+results_resp.raise_for_status()
 
-# Print the results
+results = results_resp.json().get("results", [])
+print("📊 Final Search Results:")
 for row in results:
     print(row)
